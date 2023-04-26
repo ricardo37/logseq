@@ -80,6 +80,7 @@
   (and (string? v) (>= (count v) 2) (= "\"" (first v) (last v))))
 
 (defn url?
+  "BUG: can not handle mailto: links, use this with caution"
   [s]
   (and (string? s)
        (try
