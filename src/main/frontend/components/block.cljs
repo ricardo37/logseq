@@ -1182,11 +1182,11 @@
                  (when show-brackets? [:span.text-gray-500 page-ref/right-brackets])]
 
                 (let [href* (if (util/electron?)
-                              (path/path-join "file://" (relative-assets-path->absolute-path href))
+                              (relative-assets-path->absolute-path href)
                               href)]
                   (->elem
                    :a
-                   (cond-> {:href      href*
+                   (cond-> {:href      (path/path-join "file://" href*)
                             :data-href href*
                             :target    "_blank"}
                      title (assoc :title title))
