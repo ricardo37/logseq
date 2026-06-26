@@ -433,9 +433,10 @@
                {:key      (name p)
                 :variant  (if (= p active-prec) :default :outline)
                 :size     :xs
-                :class    (str "px-2"
-                               (when (= p active-prec)
-                                 " bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground"))
+                :class    "px-2"
+                :style    (when (= p active-prec)
+                            {:backgroundColor "hsl(var(--primary))"
+                             :color           "hsl(var(--primary-foreground))"})
                 :on-click (fn [] (on-set! p))}
                (get precision-labels p)))]])]
 
