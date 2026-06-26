@@ -421,12 +421,12 @@
         ;; horizontal padding so the whole row fits on one line within the
         ;; endpoint-picker's column width.
         precision-labels
-        {:year "yyyy" :month "yyyy-mm" :day "yyyy-mm-dd"}
+        {:year "year" :month "month" :day "date"}
 
         precision-buttons
         (fn [active-prec on-set!]
           [:div.flex.items-center.gap-2
-           [:span.text-xs.text-muted-foreground "Precision:"]
+           [:span.text-xs.text-muted-foreground "Precision level:"]
            [:div.flex.gap-1
             (for [p [:year :month :day]]
               (shui/button
