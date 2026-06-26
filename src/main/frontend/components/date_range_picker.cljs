@@ -165,19 +165,20 @@
 
 ;;; ─── Display label ───────────────────────────────────────────────────────────
 
-(def ^:private month-abbr
-  ["" "Jan" "Feb" "Mar" "Apr" "May" "Jun"
-   "Jul" "Aug" "Sep" "Oct" "Nov" "Dec"])
+(defn- zero-pad2
+  [n]
+  (if (< n 10) (str "0" n) (str n)))
 
 (defn- fmt-endpoint
-  "Format a single YYYYMMDD integer for display, deriving precision from
-   the integer encoding (yyyy0000 → year, yyyymm00 → month, else day)."
+  "Format a single YYYYMMDD integer for display as yyyy-mm-dd, deriving
+   precision from the integer encoding (yyyy0000 → year, yyyymm00 → month,
+   else day)."
   [n]
   (let [[y m d] (int->parts n)]
     (cond
       (zero? (mod n 10000)) (str y)
-      (zero? (mod n 100))   (str (get month-abbr m "?") " " y)
-      :else                 (str (get month-abbr m "?") " " d ", " y))))
+      (zero? (mod n 100))   (str y "-" (zero-pad2 m))
+      :else                 (str y "-" (zero-pad2 m) "-" (zero-pad2 d)))))
 
 (defn format-label
   "Return a human-readable string for a date-range value map.
