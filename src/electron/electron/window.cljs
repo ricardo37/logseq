@@ -191,7 +191,8 @@
                               :preload (node-path/join js/__dirname "js/preload.js")
                               :nativeWindowOpen true}}}
                            features)
-                    (do (open-external! url) {:action "deny"}))
+                    (do (js/setImmediate #(open-external! url))
+                        {:action "deny"}))
                   (bean/->js))))]
 
       (doto web-contents
