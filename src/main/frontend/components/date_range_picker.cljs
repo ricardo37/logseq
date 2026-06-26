@@ -433,7 +433,7 @@
                {:key      (name p)
                 :variant  (if (= p active-prec) :default :outline)
                 :size     :xs
-                :class    "px-2"
+                :class    (str "px-2" (when (= p active-prec) " text-white"))
                 :on-click (fn [] (on-set! p))}
                (get precision-labels p)))]])]
 
