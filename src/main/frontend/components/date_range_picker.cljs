@@ -421,7 +421,7 @@
         ;; horizontal padding so the whole row fits on one line within the
         ;; endpoint-picker's column width.
         precision-labels
-        {:year "year" :month "month" :day "date"}
+        {:year "year" :month "month" :day "day"}
 
         precision-buttons
         (fn [active-prec on-set!]
@@ -433,7 +433,9 @@
                {:key      (name p)
                 :variant  (if (= p active-prec) :default :outline)
                 :size     :xs
-                :class    (str "px-2" (when (= p active-prec) " text-white"))
+                :class    (str "px-2"
+                               (when (= p active-prec)
+                                 " bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground"))
                 :on-click (fn [] (on-set! p))}
                (get precision-labels p)))]])]
 
