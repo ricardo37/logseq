@@ -57,6 +57,12 @@
         (:logseq.property.asset/external-url entity)
         (assoc :logseq.property.asset/external-url
                (:logseq.property.asset/external-url entity))
+        (:logseq.property.date/precision entity)
+        (assoc :logseq.property.date/precision (:logseq.property.date/precision entity))
+        (:logseq.property.date/start entity)
+        (assoc :logseq.property.date/start (:logseq.property.date/start entity))
+        (:logseq.property.date/end entity)
+        (assoc :logseq.property.date/end (:logseq.property.date/end entity))
         (:db/ident entity)
         (assoc :db/ident (:db/ident entity))
         (seq class-extends)

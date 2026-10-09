@@ -1,5 +1,5 @@
 (ns electron.window
-  (:require ["electron" :refer [BrowserWindow app session shell dialog] :as electron]
+  (:require ["electron" :refer [BrowserWindow app session shell] :as electron]
             ["electron-window-state" :as windowStateKeeper]
             ["path" :as node-path]
             ["url" :as URL]
@@ -8,7 +8,6 @@
             [electron.configs :as cfgs]
             [electron.context-menu :as context-menu]
             [electron.db-worker :as db-worker]
-            [electron.i18n :refer [t]]
             [electron.logger :as logger]
             [electron.spell-check :as spell-check]
             [electron.state :as state]
@@ -132,21 +131,8 @@
                    windows))))
 
 (defn- open-default-app!
-  [url default-open]
-  (let [URL (.-URL URL)
-        parsed-url (try (URL. url) (catch :default _ nil))]
-    (when parsed-url
-      (if (contains? #{"https:" "http:" "mailto:"} (.-protocol parsed-url))
-        (.openExternal shell url)
-        (when-let [^js res (and (fn? default-open)
-                                (.showMessageBoxSync dialog
-                                                     #js {:type "warning"
-                                                          :message (t :electron/link-open-confirm url)
-                                                          :defaultId 1
-                                                          :cancelId 0
-                                                          :buttons #js [(t :electron/cancel) (t :electron/ok)]}))]
-          (when (= res 1)
-            (default-open url)))))))
+  [url _default-open]
+  (.openExternal shell url))
 
 (defn setup-window-listeners!
   [^js win]
@@ -198,7 +184,8 @@
                               :preload (node-path/join js/__dirname "js/preload.js")
                               :nativeWindowOpen true}}}
                            features)
-                    (do (open-external! url) {:action "deny"}))
+                    (do (js/setImmediate #(open-external! url))
+                        {:action "deny"}))
                   (bean/->js))))]
 
       (doto web-contents

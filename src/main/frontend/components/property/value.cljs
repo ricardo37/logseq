@@ -4,6 +4,7 @@
             [clojure.set :as set]
             [clojure.string :as string]
             [dommy.core :as d]
+            [frontend.components.date-range-picker :as date-range-picker]
             [frontend.components.icon :as icon-component]
             [frontend.components.select :as select]
             [frontend.config :as config]
@@ -22,6 +23,7 @@
             [frontend.handler.property.util :as pu]
             [frontend.handler.publish :as publish-handler]
             [frontend.handler.route :as route-handler]
+            [frontend.modules.outliner.op :as outliner-op]
             [frontend.modules.outliner.ui :as ui-outliner-tx]
             [frontend.rfx :as rfx]
             [frontend.search :as search]
@@ -370,7 +372,7 @@
 
 (defn direct-value-picker-type?
   [type]
-  (contains? #{:date :datetime :asset} type))
+  (contains? #{:date :daterange :datetime :asset} type))
 
 (defn- property-write-id
   "Prefer :db/ident so worker writes skip an extra id->ident lookup.
@@ -1003,6 +1005,102 @@
     (.preventDefault e)
     false))
 
+(defn- <find-date-range-eid
+  "Resolve to the :db/id of an existing date-range entity matching
+  precision+start+end, or nil if none exists."
+  [repo {:keys [precision start end]}]
+  (p/let [result (if end
+                   (db-async/<q repo {}
+                                '[:find ?e
+                                  :in $ ?precision ?start ?end
+                                  :where
+                                  [?e :logseq.property.date/precision ?precision]
+                                  [?e :logseq.property.date/start ?start]
+                                  [?e :logseq.property.date/end ?end]]
+                                precision start end)
+                   (db-async/<q repo {}
+                                '[:find ?e
+                                  :in $ ?precision ?start
+                                  :where
+                                  [?e :logseq.property.date/precision ?precision]
+                                  [?e :logseq.property.date/start ?start]
+                                  (not [?e :logseq.property.date/end])]
+                                precision start))]
+    (ffirst result)))
+
+(defn <find-or-create-date-range-entity!
+  "Find or create a date-range value entity.  Returns a promise that resolves to
+  a map with :db/id set."
+  [{:keys [precision start end] :as dr-val}]
+  (p/let [repo (state/get-current-repo)
+          eid  (<find-date-range-eid repo dr-val)]
+    (if eid
+      {:db/id eid}
+      (let [tx-data (cond-> {:block/uuid                     (random-uuid)
+                             :logseq.property.date/precision precision
+                             :logseq.property.date/start     start}
+                      end (assoc :logseq.property.date/end end))]
+        (p/let [_ (ui-outliner-tx/transact!
+                   {:outliner-op :save-block}
+                   (outliner-op/transact! [tx-data] {:outliner-op :save-block}))
+                eid' (<find-date-range-eid repo dr-val)]
+          {:db/id eid'})))))
+
+;; Trigger chip and popup for :daterange property values.
+(hsx/defc date-range-picker-trigger
+  [value {:keys [block property on-change on-delete del-btn? editing? multiple-values?] :as opts}]
+  (let [*el      (hooks/use-ref nil)
+        label    (date-range-picker/format-label value)
+        content-fn (fn [{:keys [id]}]
+                     (date-range-picker/date-range-picker-inner
+                      {:value     value
+                       :del-btn?  del-btn?
+                       :on-delete on-delete
+                       :on-change (fn [dr-val]
+                                    (p/let [ent (<find-or-create-date-range-entity! dr-val)]
+                                      (when (fn? on-change)
+                                        (on-change ent))
+                                      (when-not multiple-values?
+                                        (shui/popup-hide! id)
+                                        (ui/hide-popups-until-preview-popup!))))}))
+        open-popup! (fn [e]
+                      (when-not (or (util/meta-key? e) (util/shift-key? e))
+                        (util/stop e)
+                        (editor-handler/save-current-block!)
+                        (when-not config/publishing?
+                          (shui/popup-show! (.-target e) content-fn
+                                            {:align "start" :auto-focus? true}))))]
+    (if editing?
+      (content-fn {:id :daterange-picker})
+      (if multiple-values?
+        (shui/button
+         {:class    "jtrigger h-6 empty-btn"
+          :variant  :text
+          :size     :sm
+          :on-click open-popup!
+          :on-key-down (fn [e]
+                         (when (contains? #{"Backspace" "Delete"} (util/ekey e))
+                           (delete-block-property! block property opts)))}
+         (ui/icon "calendar-range" {:size 16}))
+        (shui/trigger-as
+         :div.flex.flex-1.flex-row.gap-1.items-center.flex-wrap
+         {:ref      *el
+          :tabIndex 0
+          :class    "jtrigger min-h-[24px]"
+          :on-click open-popup!
+          :on-key-down (fn [e]
+                         (case (util/ekey e)
+                           ("Backspace" "Delete")
+                           (delete-block-property! block property opts)
+                           (" " "Enter")
+                           (do (some-> (hooks/deref *el) (.click))
+                               (util/stop e))
+                           nil))}
+         [:div.flex.flex-row.gap-1.items-center
+          (if label
+            [:span.text-sm label]
+            (property-empty-btn-value nil))])))))
+
 (hsx/defc date-picker
   [value {:keys [block property datetime? on-change on-delete del-btn? editing? multiple-values? other-position?
                  suppress-inline-edit-icon? property-position]
@@ -1096,25 +1194,45 @@
 (hsx/defc property-value-date-picker
   [block property value opts]
   (let [multiple-values? (db-property/many? property)
-        datetime? (= :datetime (:logseq.property/type property))]
-    (date-picker value
-                 (merge opts
-                        {:block block
-                         :property property
-	                         :datetime? datetime?
-	                         :multiple-values? multiple-values?
-	                         :on-change (fn [value]
-	                                      (let [blocks (get-operating-blocks block)]
-	                                        (property-handler/batch-set-block-property! (operating-block-ids blocks)
-	                                                                                    (:db/ident property)
-                                                                                    (if datetime?
-                                                                                      value
-                                                                                      (:db/id value)))))
-                         :del-btn? (date-property-value-present? value)
-                         :on-delete (fn [e]
-                                      (util/stop-propagation e)
-                                      (clear-date-property-value! block property)
-                                      (shui/popup-hide!))}))))
+        datetime?        (= :datetime (:logseq.property/type property))
+        date-range?      (= :daterange (:logseq.property/type property))
+        del-opts         {:del-btn?  (date-property-value-present? value)
+                          :on-delete (fn [e]
+                                       (util/stop-propagation e)
+                                       (clear-date-property-value! block property)
+                                       (shui/popup-hide!))}]
+    (if date-range?
+      ;; ── :daterange branch ────────────────────────────────────────────────
+      ;; value here is an entity map with :logseq.property.date/* keys
+      (let [dr-val (when (date-property-value-present? value)
+                     {:precision (:logseq.property.date/precision value)
+                      :start     (:logseq.property.date/start value)
+                      :end       (:logseq.property.date/end value)})]
+        (date-range-picker-trigger
+         dr-val
+         (merge opts del-opts
+                {:block            block
+                 :property         property
+                 :multiple-values? multiple-values?
+                 :on-change        (fn [ent]
+                                     (let [blocks (get-operating-blocks block)]
+                                       (property-handler/batch-set-block-property! (operating-block-ids blocks)
+                                                                                   (:db/ident property)
+                                                                                   (:db/id ent))))})))
+      ;; ── :date / :datetime branch ─────────────────────────────────────────
+      (date-picker value
+                   (merge opts del-opts
+                          {:block            block
+                           :property         property
+                           :datetime?        datetime?
+                           :multiple-values? multiple-values?
+                           :on-change        (fn [value]
+                                               (let [blocks (get-operating-blocks block)]
+                                                 (property-handler/batch-set-block-property! (operating-block-ids blocks)
+                                                                                             (:db/ident property)
+                                                                                             (if datetime?
+                                                                                               value
+                                                                                               (:db/id value)))))})))))
 
 (def ^:private broad-scoped-node-class-idents
   #{:logseq.class/Page})
@@ -1974,6 +2092,13 @@
          (when-let [reference (state/get-component :block/reference)]
            (reference {:table-view? table-view?} block-uuid)))
 
+       (= type :daterange)
+       (when value
+         (inline-text-cp (date-range-picker/format-label
+                          {:precision (:logseq.property.date/precision value)
+                           :start     (:logseq.property.date/start value)
+                           :end       (:logseq.property.date/end value)})))
+
        (and (map? value) (some? (db-property/property-value-content value)))
        (let [content (str (db-property/property-value-content value))]
          (inline-text-cp content))
@@ -2574,7 +2699,7 @@
                                         :editing? editing?
                                         :value-render (fn [] (select-item property type select-value opts))))))
         (case type
-          (:date :datetime)
+          (:date :datetime :daterange)
           (property-value-date-picker block property value (merge opts {:editing? editing?}))
 
           :checkbox
@@ -2615,7 +2740,7 @@
 (hsx/defc multiple-values-inner
   [block property v {:keys [on-chosen editing?] :as opts}]
   (let [type (:logseq.property/type property)
-        date? (contains? #{:date :datetime} type)
+        date? (contains? #{:date :datetime :daterange} type)
         *el (hooks/use-ref nil)
         items (cond->> (if (entity-map? v) #{v} v)
                 (= (:db/ident property) :block/tags)
